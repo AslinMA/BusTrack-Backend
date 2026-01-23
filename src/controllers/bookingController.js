@@ -670,3 +670,127 @@ exports.updatePaymentStatus = async (req, res) => {
     });
   }
 };
+
+/**
+ * Get all bookings for a bus (Trip History for Driver)
+ * GET /api/bookings/bus/:busId/history
+ */
+exports.getBookingsByBusHistory = async (req, res) => {
+  try {
+    const { busId } = req.params;
+
+    console.log(`📊 Fetching booking history for bus: ${busId}`);
+
+    const result = await pool.query(
+      `SELECT
+        b.*,
+        r.route_number,
+        r.start_location,
+        r.end_location,
+        t.start_time as trip_start_time,
+        t.end_time as trip_end_time,
+        t.status as trip_status
+       FROM bookings b
+       LEFT JOIN routes r ON b.route_id = r.route_id
+       LEFT JOIN trips t ON b.trip_id = t.trip_id
+       WHERE b.bus_id = $1
+       ORDER BY b.created_at DESC`,
+      [busId]
+    );
+
+    console.log(`✅ Found ${result.rows.length} bookings for bus ${busId}`);
+
+    res.status(200).json({
+      success: true,
+      data: result.rows,
+      count: result.rows.length
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching booking history:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch booking history',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get today's summary for a driver (Dashboard)
+ * GET /api/bookings/driver/:driverId/today-summary
+ */
+exports.getDriverTodaySummary = async (req, res) => {
+  try {
+    const { driverId } = req.params;
+
+    console.log(`📊 Fetching today's summary for driver: ${driverId}`);
+
+    // Get driver's bus
+    const driverBus = await pool.query(
+      `SELECT bus_id FROM drivers WHERE driver_id = $1`,
+      [driverId]
+    );
+
+    if (driverBus.rows.length === 0 || !driverBus.rows[0].bus_id) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          trips: 0,
+          passengers: 0,
+          revenue: 0,
+          bookings: 0
+        }
+      });
+    }
+
+    const busId = driverBus.rows[0].bus_id;
+
+    // Get today's trips count
+    const tripsResult = await pool.query(
+      `SELECT COUNT(DISTINCT trip_id) as trip_count
+       FROM trips
+       WHERE bus_id = $1
+         AND DATE(start_time) = CURRENT_DATE`,
+      [busId]
+    );
+
+    // Get today's bookings, passengers, and revenue
+    const bookingsResult = await pool.query(
+      `SELECT
+        COUNT(*) as booking_count,
+        COALESCE(SUM(number_of_passengers), 0) as total_passengers,
+        COALESCE(SUM(fare_amount), 0) as total_revenue
+       FROM bookings
+       WHERE bus_id = $1
+         AND DATE(created_at) = CURRENT_DATE
+         AND booking_status != 'CANCELLED'`,
+      [busId]
+    );
+
+    const trips = parseInt(tripsResult.rows[0].trip_count) || 0;
+    const bookings = parseInt(bookingsResult.rows[0].booking_count) || 0;
+    const passengers = parseInt(bookingsResult.rows[0].total_passengers) || 0;
+    const revenue = parseFloat(bookingsResult.rows[0].total_revenue) || 0;
+
+    console.log(`✅ Today's summary: ${trips} trips, ${passengers} passengers, Rs. ${revenue}`);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        trips,
+        passengers,
+        revenue: revenue.toFixed(2),
+        bookings
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching today summary:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch today summary',
+      error: error.message
+    });
+  }
+};

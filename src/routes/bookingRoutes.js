@@ -23,4 +23,11 @@ router.get('/bus/:bus_id', bookingController.getBusByBusId);
 // 🆕 NEW: Mark payment collected (for driver app)
 router.put('/:booking_id/payment', bookingController.updatePaymentStatus);
 
+// Get booking history for a bus (for driver trip history)
+router.get('/bus/:busId/history', bookingController.getBookingsByBusHistory);
+
+// Get today's summary for driver dashboard
+router.get('/driver/:driverId/today-summary', bookingController.getDriverTodaySummary);
+
+
 module.exports = router;
