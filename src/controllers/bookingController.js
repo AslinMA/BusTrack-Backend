@@ -581,7 +581,7 @@ exports.getBusByBusId = async (req, res) => {
 
     const travelDate = date || new Date().toISOString().split('T')[0];
 
-    // ✅ UPDATED QUERY WITH STOP COORDINATES
+    // ✅ UPDATED QUERY WITH PASSENGER GPS
     const result = await pool.query(
       `SELECT
         b.*,
@@ -590,7 +590,10 @@ exports.getBusByBusId = async (req, res) => {
         pickup_stop.longitude as pickup_longitude,
         dropoff_stop.stop_name as dropoff_stop_name,
         dropoff_stop.latitude as dropoff_latitude,
-        dropoff_stop.longitude as dropoff_longitude
+        dropoff_stop.longitude as dropoff_longitude,
+        b.passenger_current_latitude,
+        b.passenger_current_longitude,
+        b.passenger_last_location_update
        FROM bookings b
        LEFT JOIN stops pickup_stop ON b.pickup_stop_id = pickup_stop.stop_id
        LEFT JOIN stops dropoff_stop ON b.dropoff_stop_id = dropoff_stop.stop_id
@@ -797,6 +800,68 @@ exports.getDriverTodaySummary = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch today summary',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Update passenger's current location
+ * PUT /api/bookings/:booking_id/location
+ */
+exports.updatePassengerLocation = async (req, res) => {
+  try {
+    const { booking_id } = req.params;
+    const { latitude, longitude } = req.body;
+
+    if (!latitude || !longitude) {
+      return res.status(400).json({
+        success: false,
+        error: 'Latitude and longitude are required'
+      });
+    }
+
+    const result = await pool.query(
+      `UPDATE bookings
+       SET passenger_current_latitude = $1,
+           passenger_current_longitude = $2,
+           passenger_last_location_update = NOW()
+       WHERE booking_id = $3
+       RETURNING *`,
+      [latitude, longitude, booking_id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Booking not found'
+      });
+    }
+
+    const booking = result.rows[0];
+
+    // Emit WebSocket event to driver
+    const io = req.app.get('io');
+    if (io && booking.trip_id) {
+      io.to(`trip_${booking.trip_id}`).emit('passenger:location', {
+        booking_id: booking.booking_id,
+        passenger_name: booking.passenger_name,
+        latitude: latitude,
+        longitude: longitude,
+      });
+      console.log(`📡 Sent passenger location to trip ${booking.trip_id}`);
+    }
+
+    res.json({
+      success: true,
+      message: 'Passenger location updated',
+      data: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('❌ Error updating passenger location:', error);
+    res.status(500).json({
+      success: false,
       error: error.message
     });
   }

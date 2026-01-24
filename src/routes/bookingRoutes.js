@@ -31,4 +31,8 @@ router.put('/:booking_id/cancel', bookingController.cancelBooking);
 // Mark payment collected (for driver app)
 router.put('/:booking_id/payment', bookingController.updatePaymentStatus);
 
+// Update passenger's current location (for tracking)
+router.put('/:booking_id/location', bookingController.updatePassengerLocation);
+
+
 module.exports = router;
