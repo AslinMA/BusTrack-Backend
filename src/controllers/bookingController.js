@@ -683,18 +683,22 @@ exports.getBookingsByBusHistory = async (req, res) => {
 
     const result = await pool.query(
       `SELECT
-        b.*,
-        r.route_number,
-        r.start_location,
-        r.end_location,
-        t.start_time as trip_start_time,
-        t.end_time as trip_end_time,
-        t.status as trip_status
+        b.booking_id,
+        b.trip_id,
+        b.route_id,
+        b.bus_id,
+        b.passenger_name,
+        b.passenger_phone,
+        b.number_of_passengers,
+        b.fare_amount,
+        b.booking_status,
+        b.payment_status,
+        b.created_at,
+        b.travel_date
        FROM bookings b
-       LEFT JOIN routes r ON b.route_id = r.route_id
-       LEFT JOIN trips t ON b.trip_id = t.trip_id
        WHERE b.bus_id = $1
-       ORDER BY b.created_at DESC`,
+       ORDER BY b.created_at DESC
+       LIMIT 100`,
       [busId]
     );
 
@@ -708,6 +712,9 @@ exports.getBookingsByBusHistory = async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error fetching booking history:', error);
+    console.error('Error details:', error.message);
+    console.error('Error stack:', error.stack);
+
     res.status(500).json({
       success: false,
       message: 'Failed to fetch booking history',
