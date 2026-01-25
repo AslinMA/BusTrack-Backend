@@ -686,24 +686,28 @@ exports.getBookingsByBusHistory = async (req, res) => {
 
     const result = await pool.query(
       `SELECT
-        b.booking_id,
-        b.trip_id,
-        b.route_id,
-        b.bus_id,
-        b.passenger_name,
-        b.passenger_phone,
-        b.number_of_passengers,
-        b.fare_amount,
-        b.booking_status,
-        b.payment_status,
-        b.created_at,
-        b.travel_date
+         b.booking_id,
+         b.trip_id,
+         b.route_id,
+         b.bus_id,
+         b.passenger_name,
+         b.passenger_phone,
+         b.number_of_passengers,
+         b.fare_amount,
+         b.booking_status,
+         b.payment_status,
+         b.created_at,
+         b.travel_date
        FROM bookings b
        WHERE b.bus_id = $1
+         AND b.booking_status = 'CONFIRMED'
+         AND b.payment_status = 'PAID'
+         AND b.is_payment_collected = true
        ORDER BY b.created_at DESC
        LIMIT 100`,
       [busId]
     );
+
 
     console.log(`✅ Found ${result.rows.length} bookings for bus ${busId}`);
 
@@ -768,13 +772,14 @@ exports.getDriverTodaySummary = async (req, res) => {
     // Get today's bookings, passengers, and revenue
     const bookingsResult = await pool.query(
       `SELECT
-        COUNT(*) as booking_count,
-        COALESCE(SUM(number_of_passengers), 0) as total_passengers,
-        COALESCE(SUM(fare_amount), 0) as total_revenue
+         COUNT(*) as booking_count,
+         COALESCE(SUM(number_of_passengers), 0) as total_passengers,
+         COALESCE(SUM(fare_amount), 0) as total_revenue
        FROM bookings
        WHERE bus_id = $1
          AND DATE(created_at) = CURRENT_DATE
-         AND booking_status != 'CANCELLED'`,
+         AND booking_status != 'CANCELLED'
+         AND payment_status = 'PAID'`,
       [busId]
     );
 
