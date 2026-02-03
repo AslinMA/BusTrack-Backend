@@ -871,3 +871,114 @@ exports.updatePassengerLocation = async (req, res) => {
     });
   }
 };
+/**
+ * ✅ GET TRIP PASSENGERS - New optimized endpoint
+ * GET /api/bookings/trip/:tripId
+ */
+const getTripPassengers = async (req, res) => {
+  try {
+    const { tripId } = req.params;
+
+    console.log(`📥 Fetching passengers for trip_id: ${tripId}`);
+
+    // Query to get all bookings for this specific trip
+    const query = `
+      SELECT
+        b.booking_id,
+        b.booking_reference,
+        b.trip_id,
+        b.passenger_name,
+        b.passenger_phone,
+        b.passenger_email,
+        b.pickup_stop_id,
+        ps.stop_name AS pickup_stop_name,
+        ps.latitude AS pickup_latitude,
+        ps.longitude AS pickup_longitude,
+        b.dropoff_stop_id,
+        ds.stop_name AS dropoff_stop_name,
+        ds.latitude AS dropoff_latitude,
+        ds.longitude AS dropoff_longitude,
+        b.passenger_current_latitude,
+        b.passenger_current_longitude,
+        b.passenger_last_location_update,
+        b.number_of_passengers,
+        b.fare_amount,
+        b.payment_status,
+        b.is_payment_collected,
+        b.booking_status,
+        b.booking_date,
+        b.created_at
+      FROM bookings b
+      LEFT JOIN stops ps ON b.pickup_stop_id = ps.stop_id
+      LEFT JOIN stops ds ON b.dropoff_stop_id = ds.stop_id
+      WHERE b.trip_id = $1
+        AND b.booking_status != 'CANCELLED'
+      ORDER BY b.created_at ASC
+    `;
+
+    const result = await pool.query(query, [tripId]);
+    const bookings = result.rows;
+
+    console.log(`✅ Found ${bookings.length} bookings for trip ${tripId}`);
+
+    // Calculate statistics
+    let totalPassengers = 0;
+    let totalRevenue = 0.0;
+    let waitingCount = 0;
+
+    bookings.forEach(booking => {
+      // Count passengers
+      const numPassengers = parseInt(booking.number_of_passengers) || 1;
+      totalPassengers += numPassengers;
+
+      // Sum revenue
+      const fare = parseFloat(booking.fare_amount) || 0.0;
+      totalRevenue += fare;
+
+      // Count waiting for payment
+      const paymentStatus = (booking.payment_status || '').toUpperCase();
+      const isCollected = booking.is_payment_collected === true;
+
+      if (paymentStatus === 'PENDING' && !isCollected) {
+        waitingCount++;
+      }
+    });
+
+    console.log(`📊 Stats: Passengers=${totalPassengers}, Revenue=Rs.${totalRevenue}, Waiting=${waitingCount}`);
+
+    // Get trip info for metadata
+    const tripQuery = `
+      SELECT
+        t.route_number,
+        DATE(t.start_time) as trip_date,
+        t.bus_id
+      FROM trips t
+      WHERE t.trip_id = $1
+    `;
+    const tripResult = await pool.query(tripQuery, [tripId]);
+    const tripInfo = tripResult.rows[0] || {};
+
+    res.json({
+      success: true,
+      trip_id: parseInt(tripId),
+      route_number: tripInfo.route_number || null,
+      date: tripInfo.trip_date || null,
+      bus_id: tripInfo.bus_id || null,
+      stats: {
+        total_passengers: totalPassengers,
+        total_revenue: parseFloat(totalRevenue.toFixed(2)),
+        waiting_count: waitingCount,
+        total_bookings: bookings.length
+      },
+      passengers: bookings
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching trip passengers:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch trip passengers',
+      error: error.message
+    });
+  }
+};

@@ -34,5 +34,8 @@ router.put('/:booking_id/payment', bookingController.updatePaymentStatus);
 // Update passenger's current location (for tracking)
 router.put('/:booking_id/location', bookingController.updatePassengerLocation);
 
+// ✅ NEW: Get passengers for specific trip (optimized endpoint)
+router.get('/trip/:tripId', bookingController.getTripPassengers);
+
 
 module.exports = router;
