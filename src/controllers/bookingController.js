@@ -877,7 +877,7 @@ exports.getTripPassengers = async (req, res) => {
 
     console.log(`📥 Fetching passengers for trip_id: ${tripId}`);
 
-    // ✅ UPDATED QUERY - REMOVED passenger_email
+    // ✅ FINAL CORRECTED QUERY - Matches your actual database columns
     const query = `
       SELECT
         b.booking_id,
@@ -885,6 +885,7 @@ exports.getTripPassengers = async (req, res) => {
         b.trip_id,
         b.passenger_name,
         b.passenger_phone,
+        b.number_of_passengers,
         b.pickup_stop_id,
         ps.stop_name AS pickup_stop_name,
         ps.latitude AS pickup_latitude,
@@ -896,13 +897,14 @@ exports.getTripPassengers = async (req, res) => {
         b.passenger_current_latitude,
         b.passenger_current_longitude,
         b.passenger_last_location_update,
-        b.number_of_passengers,
         b.fare_amount,
         b.payment_status,
+        b.payment_method,
         b.is_payment_collected,
         b.booking_status,
-        b.booking_date,
-        b.created_at
+        b.travel_date,
+        b.created_at,
+        b.updated_at
       FROM bookings b
       LEFT JOIN stops ps ON b.pickup_stop_id = ps.stop_id
       LEFT JOIN stops ds ON b.dropoff_stop_id = ds.stop_id
@@ -922,12 +924,15 @@ exports.getTripPassengers = async (req, res) => {
     let waitingCount = 0;
 
     bookings.forEach(booking => {
+      // Count passengers
       const numPassengers = parseInt(booking.number_of_passengers) || 1;
       totalPassengers += numPassengers;
 
+      // Sum revenue
       const fare = parseFloat(booking.fare_amount) || 0.0;
       totalRevenue += fare;
 
+      // Count waiting for payment
       const paymentStatus = (booking.payment_status || '').toUpperCase();
       const isCollected = booking.is_payment_collected === true;
 
@@ -962,7 +967,7 @@ exports.getTripPassengers = async (req, res) => {
         waiting_count: waitingCount,
         total_bookings: bookings.length
       },
-      passengers: bookings  // ✅ Changed from 'data' to 'passengers'
+      passengers: bookings
     });
 
   } catch (error) {
