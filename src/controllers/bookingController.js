@@ -875,7 +875,7 @@ exports.updatePassengerLocation = async (req, res) => {
  * ✅ GET TRIP PASSENGERS - New optimized endpoint
  * GET /api/bookings/trip/:tripId
  */
-const getTripPassengers = async (req, res) => {
+exports.getTripPassengers = async (req, res) => {  // ← CHANGED FROM: const getTripPassengers
   try {
     const { tripId } = req.params;
 
