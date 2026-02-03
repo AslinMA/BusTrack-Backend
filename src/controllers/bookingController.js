@@ -871,17 +871,13 @@ exports.updatePassengerLocation = async (req, res) => {
     });
   }
 };
-/**
- * ✅ GET TRIP PASSENGERS - New optimized endpoint
- * GET /api/bookings/trip/:tripId
- */
-exports.getTripPassengers = async (req, res) => {  // ← CHANGED FROM: const getTripPassengers
+exports.getTripPassengers = async (req, res) => {
   try {
     const { tripId } = req.params;
 
     console.log(`📥 Fetching passengers for trip_id: ${tripId}`);
 
-    // Query to get all bookings for this specific trip
+    // ✅ UPDATED QUERY - REMOVED passenger_email
     const query = `
       SELECT
         b.booking_id,
@@ -889,7 +885,6 @@ exports.getTripPassengers = async (req, res) => {  // ← CHANGED FROM: const ge
         b.trip_id,
         b.passenger_name,
         b.passenger_phone,
-        b.passenger_email,
         b.pickup_stop_id,
         ps.stop_name AS pickup_stop_name,
         ps.latitude AS pickup_latitude,
@@ -927,15 +922,12 @@ exports.getTripPassengers = async (req, res) => {  // ← CHANGED FROM: const ge
     let waitingCount = 0;
 
     bookings.forEach(booking => {
-      // Count passengers
       const numPassengers = parseInt(booking.number_of_passengers) || 1;
       totalPassengers += numPassengers;
 
-      // Sum revenue
       const fare = parseFloat(booking.fare_amount) || 0.0;
       totalRevenue += fare;
 
-      // Count waiting for payment
       const paymentStatus = (booking.payment_status || '').toUpperCase();
       const isCollected = booking.is_payment_collected === true;
 
@@ -970,7 +962,7 @@ exports.getTripPassengers = async (req, res) => {  // ← CHANGED FROM: const ge
         waiting_count: waitingCount,
         total_bookings: bookings.length
       },
-      passengers: bookings
+      passengers: bookings  // ✅ Changed from 'data' to 'passengers'
     });
 
   } catch (error) {
