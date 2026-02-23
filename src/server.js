@@ -44,6 +44,7 @@ app.use('/api/bookings', require('./routes/bookingRoutes'));
 app.use('/api/drivers', require('./routes/driverRoutes'));
 app.use('/api/trips', require('./routes/tripRoutes'));
 app.use('/api/stops', stopRoutes); // ✅ Register stop routes
+app.use('/api/passengers', require('./routes/passengerRoutes'));
 
 // Health check endpoint
 app.get('/health', async (req, res) => {

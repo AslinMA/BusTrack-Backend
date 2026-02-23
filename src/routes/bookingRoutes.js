@@ -38,4 +38,5 @@ router.put('/:booking_id/location', bookingController.updatePassengerLocation);
 router.get('/trip/:tripId', bookingController.getTripPassengers);
 
 
+
 module.exports = router;
