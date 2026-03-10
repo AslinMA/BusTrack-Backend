@@ -4,6 +4,63 @@ const pool = require('../config/database');
  * Get all routes with active bus count
  * GET /api/routes
  */
+ function normalizeText(value) {
+   return (value || '').toString().trim().toLowerCase();
+ }
+
+ function calculateStopMatchScore(stopRow, searchText) {
+   const query = normalizeText(searchText);
+   if (!query) return 0;
+
+   const stopName = normalizeText(stopRow.stop_name);
+   const address = normalizeText(stopRow.address);
+
+   let score = 0;
+
+   if (stopName === query) score += 100;
+   if (address === query) score += 80;
+
+   if (stopName.includes(query)) score += 50;
+   if (address.includes(query)) score += 30;
+
+   for (const word of query.split(/\s+/)) {
+     if (!word) continue;
+     if (stopName.includes(word)) score += 10;
+     if (address.includes(word)) score += 5;
+   }
+
+   return score;
+ }
+
+ async function findBestMatchingTripStop(tripId, searchText) {
+   const result = await pool.query(
+     `SELECT
+        ts.trip_id,
+        ts.stop_id,
+        ts.sequence,
+        s.stop_name,
+        s.address
+      FROM trip_stops ts
+      JOIN stops s ON ts.stop_id = s.stop_id
+      WHERE ts.trip_id = $1
+      ORDER BY ts.sequence ASC`,
+     [tripId]
+   );
+
+   let bestStop = null;
+   let bestScore = 0;
+
+   for (const row of result.rows) {
+     const score = calculateStopMatchScore(row, searchText);
+     if (score > bestScore) {
+       bestScore = score;
+       bestStop = row;
+     }
+   }
+
+   return bestScore > 0 ? bestStop : null;
+ }
+
 exports.getAllRoutes = async (req, res) => {
   try {
     const result = await pool.query(
@@ -204,8 +261,10 @@ exports.searchRoutes = async (req, res) => {
 exports.getBusesOnRoute = async (req, res) => {
   try {
     const { route_id } = req.params;
+    const { from, to } = req.query;
 
     console.log(`🚌 Fetching buses for route: ${route_id}`);
+    console.log(`📍 Direction filter from="${from || ''}" to="${to || ''}"`);
 
     const result = await pool.query(
       `SELECT
@@ -238,12 +297,69 @@ exports.getBusesOnRoute = async (req, res) => {
       [route_id]
     );
 
-    console.log(`✅ Found ${result.rows.length} active buses on route ${route_id}`);
+    let buses = result.rows;
+
+    console.log(`✅ Found ${buses.length} active buses before direction filtering`);
+
+    // ✅ Keep old behavior if no from/to provided
+    if (!from || !to) {
+      return res.json({
+        success: true,
+        count: buses.length,
+        data: buses
+      });
+    }
+
+    const filteredBuses = [];
+
+    for (const bus of buses) {
+      try {
+        const fromStop = await findBestMatchingTripStop(bus.trip_id, from);
+        const toStop = await findBestMatchingTripStop(bus.trip_id, to);
+
+        console.log(`🧭 Trip ${bus.trip_id} matching:`);
+        console.log(`   fromStop = ${fromStop ? `${fromStop.stop_name} (#${fromStop.sequence})` : 'NOT FOUND'}`);
+        console.log(`   toStop   = ${toStop ? `${toStop.stop_name} (#${toStop.sequence})` : 'NOT FOUND'}`);
+
+        // Must match both stops
+        if (!fromStop || !toStop) {
+          console.log(`❌ Trip ${bus.trip_id} skipped: from/to stop not found`);
+          continue;
+        }
+
+        // Same stop not allowed for direction filtering
+        if (fromStop.stop_id === toStop.stop_id) {
+          console.log(`❌ Trip ${bus.trip_id} skipped: same from/to stop`);
+          continue;
+        }
+
+        // ✅ Correct direction only
+        if (fromStop.sequence < toStop.sequence) {
+          filteredBuses.push({
+            ...bus,
+            matched_from_stop_id: fromStop.stop_id,
+            matched_from_stop_name: fromStop.stop_name,
+            matched_from_sequence: fromStop.sequence,
+            matched_to_stop_id: toStop.stop_id,
+            matched_to_stop_name: toStop.stop_name,
+            matched_to_sequence: toStop.sequence,
+          });
+
+          console.log(`✅ Trip ${bus.trip_id} kept: correct direction`);
+        } else {
+          console.log(`❌ Trip ${bus.trip_id} removed: wrong direction (${fromStop.sequence} -> ${toStop.sequence})`);
+        }
+      } catch (tripError) {
+        console.error(`❌ Error filtering trip ${bus.trip_id}:`, tripError.message);
+      }
+    }
+
+    console.log(`🎯 Final filtered buses count: ${filteredBuses.length}`);
 
     res.json({
       success: true,
-      count: result.rows.length,
-      data: result.rows
+      count: filteredBuses.length,
+      data: filteredBuses
     });
   } catch (error) {
     console.error('❌ Get buses error:', error);
@@ -253,7 +369,6 @@ exports.getBusesOnRoute = async (req, res) => {
     });
   }
 };
-
 /**
  * Create a new route
  * POST /api/routes
