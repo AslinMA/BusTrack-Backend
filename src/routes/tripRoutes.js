@@ -8,6 +8,7 @@ router.get('/active', tripController.getActiveTrips);
 
 // Trip updates
 router.put('/:trip_id/location', tripController.updateTripLocation);
+router.get('/:trip_id/stops', tripController.getTripStops);
 router.put('/:trip_id/stops/:stop_id/complete', tripController.markStopCompleted);
 router.put('/:trip_id/end', tripController.endTrip);
 

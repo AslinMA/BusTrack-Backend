@@ -638,3 +638,41 @@ exports.getAvailableSeats = async (req, res) => {
     });
   }
 };
+
+/**
+ * Get stops for a trip
+ * GET /api/trips/:trip_id/stops
+ */
+exports.getTripStops = async (req, res) => {
+  try {
+    const { trip_id } = req.params;
+
+    const result = await pool.query(
+      `SELECT
+         ts.trip_id,
+         ts.stop_id,
+         ts.sequence,
+         ts.is_completed,
+         s.stop_name,
+         s.latitude,
+         s.longitude
+       FROM trip_stops ts
+       JOIN stops s ON ts.stop_id = s.stop_id
+       WHERE ts.trip_id = $1
+       ORDER BY ts.sequence ASC`,
+      [trip_id]
+    );
+
+    res.json({
+      success: true,
+      count: result.rows.length,
+      data: result.rows
+    });
+  } catch (error) {
+    console.error('❌ Get trip stops error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};

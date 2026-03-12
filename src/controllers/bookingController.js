@@ -1087,27 +1087,28 @@ exports.createDriverManualBooking = async (req, res) => {
     // Create booking aligned with your current schema
     const result = await pool.query(
       `INSERT INTO bookings (
-        booking_reference,
-        passenger_name,
-        passenger_phone,
-        route_id,
-        bus_id,
-        trip_id,
-        pickup_stop_id,
-        dropoff_stop_id,
-        travel_date,
-        number_of_passengers,
-        fare_amount,
-        booking_status,
-        payment_status,
-        payment_method,
-        is_payment_collected,
-        created_at
-      ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8,
-        $9, $10, $11, 'CONFIRMED', 'PAID', 'CASH', true, NOW()
-      )
-      RETURNING *`,
+         booking_reference,
+         passenger_name,
+         passenger_phone,
+         route_id,
+         bus_id,
+         trip_id,
+         pickup_stop_id,
+         dropoff_stop_id,
+         travel_date,
+         number_of_passengers,
+         fare_amount,
+         booking_status,
+         payment_status,
+         payment_method,
+         is_payment_collected,
+         booking_source,
+         created_at
+       ) VALUES (
+         $1, $2, $3, $4, $5, $6, $7, $8,
+         $9, $10, $11, 'CONFIRMED', 'PAID', 'CASH', true, 'DRIVER_MANUAL', NOW()
+       )
+       RETURNING *`,
       [
         generateBookingReference(),
         passenger_name && passenger_name.trim() !== ''
@@ -1142,6 +1143,123 @@ exports.createDriverManualBooking = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Driver manual booking error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+/**
+ * Preview fare for driver manual booking
+ * POST /api/bookings/driver/manual/fare-preview
+ */
+exports.getDriverManualFarePreview = async (req, res) => {
+  try {
+    const {
+      trip_id,
+      pickup_stop_id,
+      dropoff_stop_id,
+      number_of_passengers
+    } = req.body;
+
+    console.log('📥 Driver fare preview request:', req.body);
+
+    if (!trip_id || !pickup_stop_id || !dropoff_stop_id || !number_of_passengers) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: trip_id, pickup_stop_id, dropoff_stop_id, number_of_passengers'
+      });
+    }
+
+    const tripCheck = await pool.query(
+      `SELECT
+         t.trip_id,
+         t.route_id,
+         t.bus_id,
+         t.status,
+         r.route_number,
+         r.base_fare,
+         r.fare_per_km,
+         r.distance_km
+       FROM trips t
+       LEFT JOIN routes r ON t.route_id = r.route_id
+       WHERE t.trip_id = $1`,
+      [trip_id]
+    );
+
+    if (tripCheck.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Trip not found'
+      });
+    }
+
+    const trip = tripCheck.rows[0];
+
+    if (trip.status !== 'active') {
+      return res.status(400).json({
+        success: false,
+        error: 'Trip is not active'
+      });
+    }
+
+    const stopsResult = await pool.query(
+      `SELECT stop_id, sequence
+       FROM trip_stops
+       WHERE trip_id = $1 AND (stop_id = $2 OR stop_id = $3)
+       ORDER BY sequence ASC`,
+      [trip_id, pickup_stop_id, dropoff_stop_id]
+    );
+
+    if (stopsResult.rows.length < 2) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid pickup or dropoff stop'
+      });
+    }
+
+    const pickupSequence = stopsResult.rows[0].sequence;
+    const dropoffSequence = stopsResult.rows[1].sequence;
+
+    if (pickupSequence >= dropoffSequence) {
+      return res.status(400).json({
+        success: false,
+        error: 'Pickup stop must be before dropoff stop'
+      });
+    }
+
+    const totalStops = await pool.query(
+      `SELECT COUNT(*) as total
+       FROM trip_stops
+       WHERE trip_id = $1`,
+      [trip_id]
+    );
+
+    const stopCount = parseInt(totalStops.rows[0].total) || 1;
+    const stopsDifference = dropoffSequence - pickupSequence;
+    const estimatedDistance =
+      (parseFloat(trip.distance_km || 0) * stopsDifference) / Math.max(stopCount - 1, 1);
+
+    const farePerPassenger =
+      parseFloat(trip.base_fare || 0) + (parseFloat(trip.fare_per_km || 0) * estimatedDistance);
+
+    const totalFare = farePerPassenger * (parseInt(number_of_passengers) || 1);
+
+    res.json({
+      success: true,
+      data: {
+        trip_id: trip.trip_id,
+        route_id: trip.route_id,
+        route_number: trip.route_number,
+        pickup_stop_id,
+        dropoff_stop_id,
+        number_of_passengers: parseInt(number_of_passengers),
+        fare_per_passenger: parseFloat(farePerPassenger.toFixed(2)),
+        total_fare: parseFloat(totalFare.toFixed(2))
+      }
+    });
+  } catch (error) {
+    console.error('❌ Driver fare preview error:', error);
     res.status(500).json({
       success: false,
       error: error.message

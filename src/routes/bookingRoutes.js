@@ -5,6 +5,9 @@ const bookingController = require('../controllers/bookingController');
 // Create new booking
 router.post('/', bookingController.createBooking);
 
+// Driver manual booking preview
+router.post('/driver/manual/fare-preview', bookingController.getDriverManualFarePreview);
+
 // ✅ Driver manual booking
 router.post('/driver/manual', bookingController.createDriverManualBooking);
 
