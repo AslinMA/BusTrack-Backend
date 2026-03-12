@@ -1110,12 +1110,12 @@ exports.createDriverManualBooking = async (req, res) => {
       RETURNING *`,
       [
         generateBookingReference(),
-        passenger_name && passenger_name.trim().isNotEmpty
+        passenger_name && passenger_name.trim() !== ''
           ? passenger_name.trim()
           : 'Walk-in Passenger',
-        passenger_phone && passenger_phone.trim().isNotEmpty
+        passenger_phone && passenger_phone.trim() !== ''
           ? passenger_phone.trim()
-          : null,
+          : '0000000000',
         trip.route_id,
         trip.bus_id,
         trip.trip_id,
