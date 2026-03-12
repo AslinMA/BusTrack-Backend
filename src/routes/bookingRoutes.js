@@ -5,21 +5,23 @@ const bookingController = require('../controllers/bookingController');
 // Create new booking
 router.post('/', bookingController.createBooking);
 
+// ✅ Driver manual booking
 router.post('/driver/manual', bookingController.createDriverManualBooking);
 
 // Get user's bookings by phone
 router.get('/user/:phone', bookingController.getUserBookings);
 
-// ✅ IMPORTANT: More specific routes MUST come BEFORE generic routes
-
 // Get today's summary for driver dashboard
 router.get('/driver/:driverId/today-summary', bookingController.getDriverTodaySummary);
 
-// Get booking history for a bus (MUST be before /bus/:bus_id)
+// Get booking history for a bus
 router.get('/bus/:busId/history', bookingController.getBookingsByBusHistory);
 
-// Get bookings for a bus on specific date (for driver app)
+// Get bookings for a bus on specific date
 router.get('/bus/:bus_id', bookingController.getBusByBusId);
+
+// Get passengers for specific trip
+router.get('/trip/:tripId', bookingController.getTripPassengers);
 
 // Get available seats for a bus
 router.get('/seats/:bus_id', bookingController.getAvailableSeats);
@@ -30,17 +32,10 @@ router.get('/:booking_id', bookingController.getBookingById);
 // Cancel booking
 router.put('/:booking_id/cancel', bookingController.cancelBooking);
 
-// Mark payment collected (for driver app)
+// Mark payment collected
 router.put('/:booking_id/payment', bookingController.updatePaymentStatus);
 
-// Update passenger's current location (for tracking)
+// Update passenger current location
 router.put('/:booking_id/location', bookingController.updatePassengerLocation);
-
-// ✅ NEW: Get passengers for specific trip (optimized endpoint)
-router.get('/trip/:tripId', bookingController.getTripPassengers);
-
-
-
-
 
 module.exports = router;

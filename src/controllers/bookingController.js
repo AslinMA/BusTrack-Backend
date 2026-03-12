@@ -994,57 +994,152 @@ exports.createDriverManualBooking = async (req, res) => {
       passenger_phone
     } = req.body;
 
-    // Validate required fields
+    console.log('📥 Driver manual booking request:', req.body);
+
     if (!trip_id || !pickup_stop_id || !dropoff_stop_id || !number_of_passengers) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required fields'
+        error: 'Missing required fields: trip_id, pickup_stop_id, dropoff_stop_id, number_of_passengers'
       });
     }
 
-    // Check active trip
+    // Check active trip + route/bus data
     const tripCheck = await pool.query(
-      `SELECT * FROM trips WHERE trip_id = $1 AND status = 'active'`,
+      `SELECT
+         t.trip_id,
+         t.route_id,
+         t.bus_id,
+         t.driver_id,
+         t.status,
+         t.start_time,
+         r.route_number,
+         r.base_fare,
+         r.fare_per_km,
+         r.distance_km,
+         b.bus_number
+       FROM trips t
+       LEFT JOIN routes r ON t.route_id = r.route_id
+       LEFT JOIN buses b ON t.bus_id = b.bus_id
+       WHERE t.trip_id = $1`,
       [trip_id]
     );
 
     if (tripCheck.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Trip not found'
+      });
+    }
+
+    const trip = tripCheck.rows[0];
+
+    if (trip.status !== 'active') {
       return res.status(400).json({
         success: false,
         error: 'Trip is not active'
       });
     }
 
-    // Insert booking
+    // Check stop order inside this trip
+    const stopsResult = await pool.query(
+      `SELECT stop_id, sequence
+       FROM trip_stops
+       WHERE trip_id = $1 AND (stop_id = $2 OR stop_id = $3)
+       ORDER BY sequence ASC`,
+      [trip_id, pickup_stop_id, dropoff_stop_id]
+    );
+
+    if (stopsResult.rows.length < 2) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid pickup or dropoff stop'
+      });
+    }
+
+    const pickupSequence = stopsResult.rows[0].sequence;
+    const dropoffSequence = stopsResult.rows[1].sequence;
+
+    if (pickupSequence >= dropoffSequence) {
+      return res.status(400).json({
+        success: false,
+        error: 'Pickup stop must be before dropoff stop'
+      });
+    }
+
+    // Fare calculation same as normal booking flow
+    const totalStops = await pool.query(
+      `SELECT COUNT(*) as total
+       FROM trip_stops
+       WHERE trip_id = $1`,
+      [trip_id]
+    );
+
+    const stopCount = parseInt(totalStops.rows[0].total) || 1;
+    const stopsDifference = dropoffSequence - pickupSequence;
+    const estimatedDistance =
+      (parseFloat(trip.distance_km || 0) * stopsDifference) / Math.max(stopCount - 1, 1);
+
+    const farePerPassenger =
+      parseFloat(trip.base_fare || 0) + (parseFloat(trip.fare_per_km || 0) * estimatedDistance);
+
+    const totalFare = farePerPassenger * (parseInt(number_of_passengers) || 1);
+
+    // Create booking aligned with your current schema
     const result = await pool.query(
       `INSERT INTO bookings (
-        trip_id,
-        pickup_stop_id,
-        dropoff_stop_id,
-        number_of_passengers,
+        booking_reference,
         passenger_name,
         passenger_phone,
-        booking_status,
-        payment_status,
-        booking_source
-      )
-      VALUES ($1,$2,$3,$4,$5,$6,'CONFIRMED','PAID','DRIVER_MANUAL')
-      RETURNING *`,
-      [
+        route_id,
+        bus_id,
         trip_id,
         pickup_stop_id,
         dropoff_stop_id,
+        travel_date,
         number_of_passengers,
-        passenger_name || null,
-        passenger_phone || null
+        fare_amount,
+        booking_status,
+        payment_status,
+        payment_method,
+        is_payment_collected,
+        created_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8,
+        $9, $10, $11, 'CONFIRMED', 'PAID', 'CASH', true, NOW()
+      )
+      RETURNING *`,
+      [
+        generateBookingReference(),
+        passenger_name && passenger_name.trim().isNotEmpty
+          ? passenger_name.trim()
+          : 'Walk-in Passenger',
+        passenger_phone && passenger_phone.trim().isNotEmpty
+          ? passenger_phone.trim()
+          : null,
+        trip.route_id,
+        trip.bus_id,
+        trip.trip_id,
+        pickup_stop_id,
+        dropoff_stop_id,
+        new Date(),
+        number_of_passengers,
+        totalFare.toFixed(2)
       ]
     );
 
-    res.json({
-      success: true,
-      data: result.rows[0]
-    });
+    const booking = result.rows[0];
 
+    console.log(`✅ Driver walk-in booking created: #${booking.booking_id}`);
+
+    res.status(201).json({
+      success: true,
+      message: 'Walk-in passenger added successfully',
+      data: {
+        ...booking,
+        route_number: trip.route_number,
+        bus_number: trip.bus_number
+      }
+    });
   } catch (error) {
     console.error('❌ Driver manual booking error:', error);
     res.status(500).json({
