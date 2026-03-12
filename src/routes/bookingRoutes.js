@@ -5,6 +5,8 @@ const bookingController = require('../controllers/bookingController');
 // Create new booking
 router.post('/', bookingController.createBooking);
 
+router.post('/driver/manual', bookingController.createDriverManualBooking);
+
 // Get user's bookings by phone
 router.get('/user/:phone', bookingController.getUserBookings);
 
@@ -36,6 +38,8 @@ router.put('/:booking_id/location', bookingController.updatePassengerLocation);
 
 // ✅ NEW: Get passengers for specific trip (optimized endpoint)
 router.get('/trip/:tripId', bookingController.getTripPassengers);
+
+
 
 
 

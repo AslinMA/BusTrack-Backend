@@ -979,3 +979,77 @@ exports.getTripPassengers = async (req, res) => {
     });
   }
 };
+/**
+ * Driver creates manual booking (walk-in passenger)
+ * POST /api/bookings/driver/manual
+ */
+exports.createDriverManualBooking = async (req, res) => {
+  try {
+    const {
+      trip_id,
+      pickup_stop_id,
+      dropoff_stop_id,
+      number_of_passengers,
+      passenger_name,
+      passenger_phone
+    } = req.body;
+
+    // Validate required fields
+    if (!trip_id || !pickup_stop_id || !dropoff_stop_id || !number_of_passengers) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields'
+      });
+    }
+
+    // Check active trip
+    const tripCheck = await pool.query(
+      `SELECT * FROM trips WHERE trip_id = $1 AND status = 'active'`,
+      [trip_id]
+    );
+
+    if (tripCheck.rows.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Trip is not active'
+      });
+    }
+
+    // Insert booking
+    const result = await pool.query(
+      `INSERT INTO bookings (
+        trip_id,
+        pickup_stop_id,
+        dropoff_stop_id,
+        number_of_passengers,
+        passenger_name,
+        passenger_phone,
+        booking_status,
+        payment_status,
+        booking_source
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,'CONFIRMED','PAID','DRIVER_MANUAL')
+      RETURNING *`,
+      [
+        trip_id,
+        pickup_stop_id,
+        dropoff_stop_id,
+        number_of_passengers,
+        passenger_name || null,
+        passenger_phone || null
+      ]
+    );
+
+    res.json({
+      success: true,
+      data: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('❌ Driver manual booking error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
