@@ -740,7 +740,6 @@ exports.getDriverTodaySummary = async (req, res) => {
 
     console.log(`📊 Fetching today's summary for driver: ${driverId}`);
 
-    // Get driver's bus
     const driverBus = await pool.query(
       `SELECT bus_id FROM drivers WHERE driver_id = $1`,
       [driverId]
@@ -752,15 +751,21 @@ exports.getDriverTodaySummary = async (req, res) => {
         data: {
           trips: 0,
           passengers: 0,
-          revenue: 0,
-          bookings: 0
+          revenue: '0.00',
+          bookings: 0,
+          pending_payments: 0,
+          walk_in_passengers: 0,
+          app_passengers: 0,
+          walk_in_revenue: '0.00',
+          app_revenue: '0.00',
+          walk_in_bookings: 0,
+          app_bookings: 0,
         }
       });
     }
 
     const busId = driverBus.rows[0].bus_id;
 
-    // Get today's trips count
     const tripsResult = await pool.query(
       `SELECT COUNT(DISTINCT trip_id) as trip_count
        FROM trips
@@ -769,26 +774,80 @@ exports.getDriverTodaySummary = async (req, res) => {
       [busId]
     );
 
-    // Get today's bookings, passengers, and revenue
-    const bookingsResult = await pool.query(
+    const summaryResult = await pool.query(
       `SELECT
-         COUNT(*) as booking_count,
-         COALESCE(SUM(number_of_passengers), 0) as total_passengers,
-         COALESCE(SUM(fare_amount), 0) as total_revenue
+         COUNT(*) FILTER (WHERE booking_status != 'CANCELLED') as booking_count,
+         COALESCE(SUM(number_of_passengers) FILTER (
+           WHERE booking_status != 'CANCELLED'
+         ), 0) as total_passengers,
+
+         COALESCE(SUM(fare_amount) FILTER (
+           WHERE booking_status != 'CANCELLED'
+             AND payment_status = 'PAID'
+         ), 0) as total_revenue,
+
+         COUNT(*) FILTER (
+           WHERE booking_status != 'CANCELLED'
+             AND payment_status != 'PAID'
+         ) as pending_payments,
+
+         COUNT(*) FILTER (
+           WHERE booking_status != 'CANCELLED'
+             AND booking_source = 'DRIVER_MANUAL'
+         ) as walk_in_bookings,
+
+         COALESCE(SUM(number_of_passengers) FILTER (
+           WHERE booking_status != 'CANCELLED'
+             AND booking_source = 'DRIVER_MANUAL'
+         ), 0) as walk_in_passengers,
+
+         COALESCE(SUM(fare_amount) FILTER (
+           WHERE booking_status != 'CANCELLED'
+             AND payment_status = 'PAID'
+             AND booking_source = 'DRIVER_MANUAL'
+         ), 0) as walk_in_revenue,
+
+         COUNT(*) FILTER (
+           WHERE booking_status != 'CANCELLED'
+             AND (booking_source IS NULL OR booking_source != 'DRIVER_MANUAL')
+         ) as app_bookings,
+
+         COALESCE(SUM(number_of_passengers) FILTER (
+           WHERE booking_status != 'CANCELLED'
+             AND (booking_source IS NULL OR booking_source != 'DRIVER_MANUAL')
+         ), 0) as app_passengers,
+
+         COALESCE(SUM(fare_amount) FILTER (
+           WHERE booking_status != 'CANCELLED'
+             AND payment_status = 'PAID'
+             AND (booking_source IS NULL OR booking_source != 'DRIVER_MANUAL')
+         ), 0) as app_revenue
+
        FROM bookings
        WHERE bus_id = $1
-         AND DATE(created_at) = CURRENT_DATE
-         AND booking_status != 'CANCELLED'
-         AND payment_status = 'PAID'`,
+         AND DATE(created_at) = CURRENT_DATE`,
       [busId]
     );
 
     const trips = parseInt(tripsResult.rows[0].trip_count) || 0;
-    const bookings = parseInt(bookingsResult.rows[0].booking_count) || 0;
-    const passengers = parseInt(bookingsResult.rows[0].total_passengers) || 0;
-    const revenue = parseFloat(bookingsResult.rows[0].total_revenue) || 0;
+    const row = summaryResult.rows[0];
 
-    console.log(`✅ Today's summary: ${trips} trips, ${passengers} passengers, Rs. ${revenue}`);
+    const bookings = parseInt(row.booking_count) || 0;
+    const passengers = parseInt(row.total_passengers) || 0;
+    const revenue = parseFloat(row.total_revenue) || 0;
+    const pendingPayments = parseInt(row.pending_payments) || 0;
+
+    const walkInBookings = parseInt(row.walk_in_bookings) || 0;
+    const walkInPassengers = parseInt(row.walk_in_passengers) || 0;
+    const walkInRevenue = parseFloat(row.walk_in_revenue) || 0;
+
+    const appBookings = parseInt(row.app_bookings) || 0;
+    const appPassengers = parseInt(row.app_passengers) || 0;
+    const appRevenue = parseFloat(row.app_revenue) || 0;
+
+    console.log(
+      `✅ Today's summary: trips=${trips}, passengers=${passengers}, revenue=${revenue}, walkIn=${walkInPassengers}, app=${appPassengers}`
+    );
 
     res.status(200).json({
       success: true,
@@ -796,7 +855,14 @@ exports.getDriverTodaySummary = async (req, res) => {
         trips,
         passengers,
         revenue: revenue.toFixed(2),
-        bookings
+        bookings,
+        pending_payments: pendingPayments,
+        walk_in_bookings: walkInBookings,
+        walk_in_passengers: walkInPassengers,
+        walk_in_revenue: walkInRevenue.toFixed(2),
+        app_bookings: appBookings,
+        app_passengers: appPassengers,
+        app_revenue: appRevenue.toFixed(2),
       }
     });
 
@@ -809,7 +875,6 @@ exports.getDriverTodaySummary = async (req, res) => {
     });
   }
 };
-
 /**
  * Update passenger's current location
  * PUT /api/bookings/:booking_id/location
