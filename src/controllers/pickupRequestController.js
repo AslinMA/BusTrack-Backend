@@ -431,3 +431,105 @@ exports.completePickupRequest = async (req, res) => {
     });
   }
 };
+
+
+exports.getPendingRequestsByRoute = async (req, res) => {
+  try {
+    const { routeId } = req.params;
+
+    const result = await pool.query(
+      `SELECT
+         pr.*,
+         r.route_number,
+         r.route_name
+       FROM pickup_requests pr
+       JOIN routes r ON pr.route_id = r.route_id
+       WHERE pr.route_id = $1
+         AND pr.status = 'PENDING'
+       ORDER BY pr.requested_at ASC`,
+      [routeId]
+    );
+
+    res.json({
+      success: true,
+      count: result.rows.length,
+      data: result.rows
+    });
+  } catch (error) {
+    console.error('❌ Get pending pickup requests error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+exports.cancelPickupRequest = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+
+    const result = await pool.query(
+      `UPDATE pickup_requests
+       SET status = 'CANCELLED',
+           cancelled_at = NOW(),
+           updated_at = NOW()
+       WHERE request_id = $1
+         AND status IN ('PENDING', 'ACCEPTED')
+       RETURNING *`,
+      [requestId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Pickup request not found or already closed'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Pickup request cancelled successfully',
+      data: result.rows[0]
+    });
+  } catch (error) {
+    console.error('❌ Cancel pickup request error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+exports.cancelPickupRequest = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+
+    const result = await pool.query(
+      `UPDATE pickup_requests
+       SET status = 'CANCELLED',
+           cancelled_at = NOW(),
+           updated_at = NOW()
+       WHERE request_id = $1
+         AND status IN ('PENDING', 'ACCEPTED')
+       RETURNING *`,
+      [requestId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Pickup request not found or already closed'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Pickup request cancelled successfully',
+      data: result.rows[0]
+    });
+  } catch (error) {
+    console.error('❌ Cancel pickup request error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
