@@ -11,8 +11,12 @@ router.get('/route/:routeId', pickupRequestController.getPendingRequestsByRoute)
 // List pickup requests
 router.get('/', pickupRequestController.getPickupRequests);
 
+router.get('/summary/:route_id', pickupRequestController.getPickupRequestSummaryByRoute);
+
 // Get single pickup request
 router.get('/:request_id', pickupRequestController.getPickupRequestById);
+
+
 
 // Accept
 router.put('/:request_id/accept', pickupRequestController.acceptPickupRequest);

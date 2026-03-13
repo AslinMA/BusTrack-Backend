@@ -451,3 +451,32 @@ exports.cancelPickupRequest = async (req, res) => {
     });
   }
 };
+exports.getPickupRequestSummaryByRoute = async (req, res) => {
+  try {
+    const { route_id } = req.params;
+
+    const result = await pool.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE status = 'PENDING') AS pending_requests,
+         COALESCE(SUM(passenger_count) FILTER (WHERE status = 'PENDING'), 0) AS total_waiting_passengers
+       FROM pickup_requests
+       WHERE route_id = $1`,
+      [route_id]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        route_id: parseInt(route_id),
+        pending_requests: parseInt(result.rows[0].pending_requests) || 0,
+        total_waiting_passengers: parseInt(result.rows[0].total_waiting_passengers) || 0,
+      }
+    });
+  } catch (error) {
+    console.error('❌ Get pickup request summary error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
