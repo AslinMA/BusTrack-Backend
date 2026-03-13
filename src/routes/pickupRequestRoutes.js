@@ -5,6 +5,9 @@ const pickupRequestController = require('../controllers/pickupRequestController'
 // Create pickup request
 router.post('/', pickupRequestController.createPickupRequest);
 
+// Get pending pickup requests for a route
+router.get('/route/:routeId', pickupRequestController.getPendingRequestsByRoute);
+
 // List pickup requests
 router.get('/', pickupRequestController.getPickupRequests);
 

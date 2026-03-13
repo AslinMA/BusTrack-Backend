@@ -330,54 +330,6 @@ exports.acceptPickupRequest = async (req, res) => {
  * Cancel pickup request
  * PUT /api/pickup-requests/:request_id/cancel
  */
-exports.cancelPickupRequest = async (req, res) => {
-  try {
-    const { request_id } = req.params;
-
-    const requestCheck = await pool.query(
-      `SELECT * FROM pickup_requests WHERE request_id = $1`,
-      [request_id]
-    );
-
-    if (requestCheck.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Pickup request not found'
-      });
-    }
-
-    const request = requestCheck.rows[0];
-
-    if (request.status === 'COMPLETED' || request.status === 'CANCELLED') {
-      return res.status(400).json({
-        success: false,
-        error: `Cannot cancel request with status ${request.status}`
-      });
-    }
-
-    const result = await pool.query(
-      `UPDATE pickup_requests
-       SET status = 'CANCELLED',
-           cancelled_at = NOW(),
-           updated_at = NOW()
-       WHERE request_id = $1
-       RETURNING *`,
-      [request_id]
-    );
-
-    res.json({
-      success: true,
-      message: 'Pickup request cancelled successfully',
-      data: result.rows[0]
-    });
-  } catch (error) {
-    console.error('❌ Cancel pickup request error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-};
 
 /**
  * Complete pickup request
@@ -463,41 +415,7 @@ exports.getPendingRequestsByRoute = async (req, res) => {
     });
   }
 };
-exports.cancelPickupRequest = async (req, res) => {
-  try {
-    const { requestId } = req.params;
 
-    const result = await pool.query(
-      `UPDATE pickup_requests
-       SET status = 'CANCELLED',
-           cancelled_at = NOW(),
-           updated_at = NOW()
-       WHERE request_id = $1
-         AND status IN ('PENDING', 'ACCEPTED')
-       RETURNING *`,
-      [requestId]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Pickup request not found or already closed'
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Pickup request cancelled successfully',
-      data: result.rows[0]
-    });
-  } catch (error) {
-    console.error('❌ Cancel pickup request error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-};
 exports.cancelPickupRequest = async (req, res) => {
   try {
     const { requestId } = req.params;
