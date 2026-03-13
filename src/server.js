@@ -85,6 +85,7 @@ app.get('/', (req, res) => {
       trips: '/api/trips',
       stops: '/api/stops', // ✅ Added
       passengers: '/api/passengers',
+      pickup_requests: '/api/pickup-requests',
       health: '/health'
     }
   });
