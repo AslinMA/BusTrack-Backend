@@ -418,7 +418,7 @@ exports.getPendingRequestsByRoute = async (req, res) => {
 
 exports.cancelPickupRequest = async (req, res) => {
   try {
-    const { requestId } = req.params;
+    const { request_id } = req.params;
 
     const result = await pool.query(
       `UPDATE pickup_requests
@@ -428,7 +428,7 @@ exports.cancelPickupRequest = async (req, res) => {
        WHERE request_id = $1
          AND status IN ('PENDING', 'ACCEPTED')
        RETURNING *`,
-      [requestId]
+      [request_id]
     );
 
     if (result.rows.length === 0) {
