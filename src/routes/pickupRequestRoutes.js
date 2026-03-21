@@ -24,6 +24,8 @@ router.put('/:request_id/accept', pickupRequestController.acceptPickupRequest);
 // Cancel
 router.put('/:request_id/cancel', pickupRequestController.cancelPickupRequest);
 
+router.put('/:request_id/boarded', pickupRequestController.markPickupRequestBoarded);
+
 // Complete
 router.put('/:request_id/complete', pickupRequestController.completePickupRequest);
 

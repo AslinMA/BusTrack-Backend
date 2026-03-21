@@ -335,6 +335,61 @@ exports.acceptPickupRequest = async (req, res) => {
  * Complete pickup request
  * PUT /api/pickup-requests/:request_id/complete
  */
+ /**
+  * Mark pickup request as boarded
+  * PUT /api/pickup-requests/:request_id/boarded
+  */
+ exports.markPickupRequestBoarded = async (req, res) => {
+   try {
+     const { request_id } = req.params;
+
+     const requestCheck = await pool.query(
+       `SELECT * FROM pickup_requests WHERE request_id = $1`,
+       [request_id]
+     );
+
+     if (requestCheck.rows.length === 0) {
+       return res.status(404).json({
+         success: false,
+         error: 'Pickup request not found'
+       });
+     }
+
+     const request = requestCheck.rows[0];
+
+     if (request.status !== 'ACCEPTED') {
+       return res.status(400).json({
+         success: false,
+         error: `Only ACCEPTED requests can be marked as boarded. Current status: ${request.status}`
+       });
+     }
+
+     const result = await pool.query(
+       `UPDATE pickup_requests
+        SET status = 'BOARDED',
+            completed_at = NOW(),
+            updated_at = NOW()
+        WHERE request_id = $1
+        RETURNING *`,
+       [request_id]
+     );
+
+     console.log(`✅ Pickup request boarded: #${request_id}`);
+
+     res.json({
+       success: true,
+       message: 'Pickup request marked as boarded successfully',
+       data: result.rows[0]
+     });
+   } catch (error) {
+     console.error('❌ Mark pickup request boarded error:', error);
+     res.status(500).json({
+       success: false,
+       error: error.message
+     });
+   }
+ };
+
 exports.completePickupRequest = async (req, res) => {
   try {
     const { request_id } = req.params;
