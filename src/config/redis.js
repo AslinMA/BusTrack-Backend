@@ -1,12 +1,16 @@
- 
 const redis = require('redis');
 
-let client;
+let client = null;
 
 const connectRedis = async () => {
+  if (!process.env.REDIS_URL) {
+    console.log('⚠️ REDIS_URL not set. Starting without Redis.');
+    return null;
+  }
+
   try {
     client = redis.createClient({
-      url: process.env.REDIS_URL || 'redis://localhost:6379',
+      url: process.env.REDIS_URL,
       socket: {
         reconnectStrategy: (retries) => {
           if (retries > 10) {

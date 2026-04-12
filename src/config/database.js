@@ -1,15 +1,15 @@
 const { Pool } = require('pg');
 require('dotenv').config();
 
+if (!process.env.DATABASE_URL) {
+  throw new Error('DATABASE_URL is missing');
+}
+
 const pool = new Pool({
-  host: 'aws-1-ap-northeast-2.pooler.supabase.com',
-  port: 5432,
-  database: 'postgres',
-  user: 'postgres.grnqvvcwqiiaipkuodfo',
-  password: 'pci1jiK6IiBu5W7A',
+  connectionString: process.env.DATABASE_URL,
   ssl: {
-    rejectUnauthorized: false
-  }
+    rejectUnauthorized: false,
+  },
 });
 
 pool.on('connect', () => {
@@ -21,4 +21,3 @@ pool.on('error', (err) => {
 });
 
 module.exports = pool;
-
