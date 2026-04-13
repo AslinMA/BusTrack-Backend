@@ -4,6 +4,7 @@ const driverController = require('../controllers/driverController');
 
 // Driver authentication
 router.post('/login', driverController.loginDriver);
+router.post('/signup', driverController.signupDriver);
 
 // Driver profile
 router.get('/:driver_id', driverController.getDriverProfile);

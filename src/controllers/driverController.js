@@ -1,5 +1,5 @@
 const pool = require('../config/database');
-
+const bcrypt = require('bcrypt');
 /**
  * Driver login with license number
  * POST /api/drivers/login
@@ -104,6 +104,140 @@ exports.loginDriver = async (req, res) => {
  * Get driver profile
  * GET /api/drivers/:driver_id
  */
+exports.signupDriver = async (req, res) => {
+  try {
+    const {
+      full_name,
+      license_number,
+      phone,
+      email,
+      password,
+      requested_route_id,
+      bus_request_type,
+      requested_existing_bus_id,
+      requested_bus_number,
+      requested_bus_type,
+      requested_bus_capacity,
+    } = req.body;
+
+    if (!full_name || !license_number || !phone || !password) {
+      return res.status(400).json({
+        success: false,
+        error: 'Full name, license number, phone, and password are required',
+      });
+    }
+
+    if (!requested_route_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'Route selection is required',
+      });
+    }
+
+    if (!['existing', 'new'].includes(bus_request_type)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid bus request type',
+      });
+    }
+
+    if (bus_request_type === 'existing' && !requested_existing_bus_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please select an existing bus',
+      });
+    }
+
+    if (
+      bus_request_type === 'new' &&
+      (!requested_bus_number || !requested_bus_capacity)
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: 'Bus number and capacity are required for new bus requests',
+      });
+    }
+
+    const existingDriver = await pool.query(
+      `SELECT driver_id
+       FROM drivers
+       WHERE UPPER(TRIM(license_number)) = UPPER(TRIM($1))
+       LIMIT 1`,
+      [license_number]
+    );
+
+    if (existingDriver.rows.length > 0) {
+      return res.status(409).json({
+        success: false,
+        error: 'A driver with this license number already exists',
+      });
+    }
+
+    const existingPending = await pool.query(
+      `SELECT signup_request_id
+       FROM driver_signup_requests
+       WHERE UPPER(TRIM(license_number)) = UPPER(TRIM($1))
+         AND signup_status = 'pending'
+       LIMIT 1`,
+      [license_number]
+    );
+
+    if (existingPending.rows.length > 0) {
+      return res.status(409).json({
+        success: false,
+        error: 'A pending signup request already exists for this license number',
+      });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const result = await pool.query(
+      `INSERT INTO driver_signup_requests (
+         full_name,
+         license_number,
+         phone,
+         email,
+         password_hash,
+         requested_route_id,
+         bus_request_type,
+         requested_existing_bus_id,
+         requested_bus_number,
+         requested_bus_type,
+         requested_bus_capacity,
+         signup_status
+       ) VALUES (
+         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending'
+       )
+       RETURNING signup_request_id, signup_status, created_at`,
+      [
+        full_name.trim(),
+        license_number.trim().toUpperCase(),
+        phone.trim(),
+        email ? email.trim() : null,
+        passwordHash,
+        requested_route_id,
+        bus_request_type,
+        bus_request_type === 'existing' ? requested_existing_bus_id : null,
+        bus_request_type === 'new' ? requested_bus_number?.trim() : null,
+        bus_request_type === 'new' ? requested_bus_type?.trim() : null,
+        bus_request_type === 'new' ? requested_bus_capacity : null,
+      ]
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: 'Signup request submitted successfully',
+      data: result.rows[0],
+    });
+  } catch (error) {
+    console.error('❌ Driver signup error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+};
+
 exports.getDriverProfile = async (req, res) => {
   try {
     const { driver_id } = req.params;
