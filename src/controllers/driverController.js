@@ -4,60 +4,102 @@ const pool = require('../config/database');
  * Driver login with license number
  * POST /api/drivers/login
  */
+const bcrypt = require('bcrypt');
+const pool = require('../config/database');
+
 exports.loginDriver = async (req, res) => {
   try {
-    const { license_number } = req.body;
+    const { license_number, password } = req.body;
 
-    if (!license_number) {
+    if (!license_number || !password) {
       return res.status(400).json({
         success: false,
-        error: 'License number is required'
+        error: 'License number and password are required',
       });
     }
 
-   // Query driver with bus details
-   const result = await pool.query(
-     `SELECT
-       d.driver_id,
-       d.name,
-       d.license_number,
-       d.phone,
-       d.photo_url,
-       d.bus_id,
-       b.bus_number,
-       b.bus_type,
-       b.capacity
-      FROM drivers d
-      LEFT JOIN buses b ON d.bus_id = b.bus_id
-      WHERE UPPER(TRIM(d.license_number)) = UPPER(TRIM($1))
-      AND d.status = 'active'`,
-     [license_number]
-   );
+    const result = await pool.query(
+      `SELECT
+         d.driver_id,
+         d.name,
+         d.license_number,
+         d.phone,
+         d.email,
+         d.photo_url,
+         d.bus_id,
+         d.status,
+         d.approval_status,
+         d.password_hash,
+         b.bus_number
+       FROM drivers d
+       LEFT JOIN buses b ON d.bus_id = b.bus_id
+       WHERE UPPER(TRIM(d.license_number)) = UPPER(TRIM($1))
+       LIMIT 1`,
+      [license_number]
+    );
 
     if (result.rows.length === 0) {
       return res.status(401).json({
         success: false,
-        error: 'Invalid license number or inactive driver'
+        error: 'Invalid license number or password',
       });
     }
 
     const driver = result.rows[0];
 
+    if (driver.status !== 'active') {
+      return res.status(403).json({
+        success: false,
+        error: 'Driver account is inactive',
+      });
+    }
+
+    if (driver.approval_status && driver.approval_status !== 'approved') {
+      return res.status(403).json({
+        success: false,
+        error: 'Your account is pending admin approval',
+      });
+    }
+
+    if (!driver.password_hash) {
+      return res.status(403).json({
+        success: false,
+        error: 'Password is not set for this driver account',
+      });
+    }
+
+    const isMatch = await bcrypt.compare(password, driver.password_hash);
+
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid license number or password',
+      });
+    }
+
+    await pool.query(
+      `UPDATE drivers
+       SET last_login_at = NOW()
+       WHERE driver_id = $1`,
+      [driver.driver_id]
+    );
+
+    delete driver.password_hash;
+
     console.log(`✅ Driver logged in: ${driver.name} (${driver.license_number})`);
 
-    res.json({
+    return res.json({
       success: true,
-      data: driver
+      data: driver,
     });
   } catch (error) {
     console.error('❌ Driver login error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
     });
   }
 };
-
 /**
  * Get driver profile
  * GET /api/drivers/:driver_id
