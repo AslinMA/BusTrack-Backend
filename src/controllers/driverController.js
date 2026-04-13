@@ -1,5 +1,4 @@
-const pool = require('../config/database');
-const bcrypt = require('bcrypt');
+
 /**
  * Driver login with license number
  * POST /api/drivers/login
