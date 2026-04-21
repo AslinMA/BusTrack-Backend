@@ -6,10 +6,16 @@ const stopController = require('../controllers/stopController');
 router.post('/', stopController.createStop);
 router.get('/', stopController.getAllStops);
 router.get('/stats/count', stopController.getStopsStats);
+
+// NEW: batch sync for one route
+router.put('/route/:route_id/sync', stopController.syncRouteStops);
+
+// Existing helpers
+router.put('/reorder', stopController.reorderStops);
+router.delete('/route/:route_id', stopController.deleteRouteStops);
+
 router.get('/:stop_id', stopController.getStopById);
 router.put('/:stop_id', stopController.updateStop);
-router.put('/reorder', stopController.reorderStops);
 router.delete('/:stop_id', stopController.deleteStop);
-router.delete('/route/:route_id', stopController.deleteRouteStops);
 
 module.exports = router;

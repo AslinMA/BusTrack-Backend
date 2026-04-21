@@ -4,6 +4,168 @@ const pool = require('../config/database');
  * Create new stop
  * POST /api/stops
  */
+
+ /**
+  * Sync all stops for one route in a single transaction
+  * PUT /api/stops/route/:route_id/sync
+  */
+ exports.syncRouteStops = async (req, res) => {
+   const client = await pool.connect();
+
+   try {
+     const routeId = parseInt(req.params.route_id, 10);
+     const { stops } = req.body;
+
+     if (!routeId || Number.isNaN(routeId)) {
+       return res.status(400).json({
+         success: false,
+         error: 'Invalid route_id',
+       });
+     }
+
+     if (!Array.isArray(stops)) {
+       return res.status(400).json({
+         success: false,
+         error: 'stops must be an array',
+       });
+     }
+
+     if (stops.length == 0) {
+       return res.status(400).json({
+         success: false,
+         error: 'At least one stop is required',
+       });
+     }
+
+     await client.query('BEGIN');
+
+     const normalizedStops = stops.map((stop, index) => ({
+       stop_id: Number(stop.stop_id ?? stop.stopId ?? 0),
+       stop_name: String(stop.stop_name ?? stop.stopName ?? '').trim(),
+       latitude: stop.latitude ?? 0.0,
+       longitude: stop.longitude ?? 0.0,
+       sequence: index + 1,
+     }));
+
+     for (const stop of normalizedStops) {
+       if (!stop.stop_name) {
+         throw new Error('Stop name cannot be empty');
+       }
+     }
+
+     const existingResult = await client.query(
+       `SELECT stop_id
+        FROM stops
+        WHERE route_id = $1
+        ORDER BY sequence ASC, stop_id ASC`,
+       [routeId]
+     );
+
+     const existingIds = existingResult.rows.map((row) => row.stop_id);
+     const incomingExistingIds = normalizedStops
+       .filter((stop) => stop.stop_id > 0)
+       .map((stop) => stop.stop_id);
+
+     const removedIds = existingIds.filter((id) => !incomingExistingIds.includes(id));
+
+     if (removedIds.length > 0) {
+       const usageCheck = await client.query(
+         `SELECT DISTINCT stop_id
+          FROM trip_stops
+          WHERE stop_id = ANY($1::int[])`,
+         [removedIds]
+       );
+
+       if (usageCheck.rows.length > 0) {
+         throw new Error('Cannot delete stop(s) that are already used in trips');
+       }
+
+       await client.query(
+         `DELETE FROM stops
+          WHERE route_id = $1
+            AND stop_id = ANY($2::int[])`,
+         [routeId, removedIds]
+       );
+     }
+
+     const syncedStops = [];
+
+     for (const stop of normalizedStops) {
+       if (stop.stop_id > 0) {
+         const updateResult = await client.query(
+           `UPDATE stops
+            SET stop_name = $1,
+                latitude = $2,
+                longitude = $3,
+                sequence = $4,
+                updated_at = NOW()
+            WHERE stop_id = $5
+              AND route_id = $6
+            RETURNING *`,
+           [
+             stop.stop_name,
+             stop.latitude ?? 0.0,
+             stop.longitude ?? 0.0,
+             stop.sequence,
+             stop.stop_id,
+             routeId,
+           ]
+         );
+
+         if (updateResult.rows.length === 0) {
+           throw new Error(`Stop ${stop.stop_id} not found for this route`);
+         }
+
+         syncedStops.push(updateResult.rows[0]);
+       } else {
+         const insertResult = await client.query(
+           `INSERT INTO stops (
+              stop_name,
+              latitude,
+              longitude,
+              route_id,
+              sequence
+            )
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING *`,
+           [
+             stop.stop_name,
+             stop.latitude ?? 0.0,
+             stop.longitude ?? 0.0,
+             routeId,
+             stop.sequence,
+           ]
+         );
+
+         syncedStops.push(insertResult.rows[0]);
+       }
+     }
+
+     syncedStops.sort((a, b) => a.sequence - b.sequence);
+
+     await client.query('COMMIT');
+
+     console.log(`✅ Synced ${syncedStops.length} stops for route ${routeId}`);
+
+     return res.json({
+       success: true,
+       message: 'Route stops synced successfully',
+       count: syncedStops.length,
+       data: syncedStops,
+     });
+   } catch (error) {
+     await client.query('ROLLBACK');
+     console.error('❌ Sync route stops error:', error);
+
+     return res.status(500).json({
+       success: false,
+       error: error.message,
+     });
+   } finally {
+     client.release();
+   }
+ };
+
 exports.createStop = async (req, res) => {
   try {
     const { stop_name, latitude, longitude, route_id, sequence } = req.body;
